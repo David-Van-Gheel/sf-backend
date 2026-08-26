@@ -177,3 +177,4 @@ app/
   routers/contacts.py REST endpoints
 tests/                API tests via FastAPI TestClient
 ```
+Testing out my first comments to see what Qodo does.
