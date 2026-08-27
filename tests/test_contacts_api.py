@@ -19,6 +19,20 @@ def test_create_contact(client, payload):
     assert body["created_at"] and body["updated_at"]
 
 
+def test_contact_supports_multiple_typed_addresses(client, payload):
+    addresses = [
+        {"type": "Home", "city": "Oakland", "country": "USA"},
+        {"type": "Work", "address": "1 Market St", "city": "San Francisco"},
+    ]
+    response = client.post(BASE, json={**payload, "addresses": addresses})
+    assert response.status_code == 201
+    body = response.json()
+    assert [(item["type"], item["city"]) for item in body["addresses"]] == [
+        ("Home", "Oakland"),
+        ("Work", "San Francisco"),
+    ]
+
+
 def test_create_requires_valid_email(client, payload):
     response = client.post(BASE, json={**payload, "email": "not-an-email"})
     assert response.status_code == 422

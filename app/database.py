@@ -1,7 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event, text
-from sqlalchemy.exc import OperationalError
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -66,15 +65,34 @@ def init_db() -> None:
             )
             version = connection.execute(
                 text("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")
-            ).scalar_one_or_none()
+            ).scalar_one_or_none(            )
             if version is None:
-                try:
+                columns = {column["name"] for column in inspect(connection).get_columns("contacts")}
+                if "photo_url" not in columns:
                     connection.execute(text("ALTER TABLE contacts ADD COLUMN photo_url TEXT"))
-                except OperationalError as error:
-                    message = str(error).lower()
-                    if "duplicate column" not in message and "already exists" not in message:
-                        raise
                 connection.execute(text("INSERT INTO schema_migrations (version) VALUES (1)"))
+            if (version or 1) < 2:
+                if engine.dialect.name == "postgresql":
+                    connection.execute(text(
+                        "CREATE TABLE IF NOT EXISTS addresses ("
+                        "id SERIAL PRIMARY KEY, contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE, "
+                        "type VARCHAR(20) NOT NULL, address VARCHAR(300), city VARCHAR(120), "
+                        "state VARCHAR(120), postal_code VARCHAR(20), country VARCHAR(120))"
+                    ))
+                else:
+                    connection.execute(text(
+                        "CREATE TABLE IF NOT EXISTS addresses ("
+                        "id INTEGER PRIMARY KEY, contact_id INTEGER NOT NULL REFERENCES contacts(id) ON DELETE CASCADE, "
+                        "type VARCHAR(20) NOT NULL, address VARCHAR(300), city VARCHAR(120), "
+                        "state VARCHAR(120), postal_code VARCHAR(20), country VARCHAR(120))"
+                    ))
+                connection.execute(text(
+                    "INSERT INTO addresses (contact_id, type, address, city, state, postal_code, country) "
+                    "SELECT id, 'Other', address, city, state, postal_code, country FROM contacts "
+                    "WHERE address IS NOT NULL OR city IS NOT NULL OR state IS NOT NULL "
+                    "OR postal_code IS NOT NULL OR country IS NOT NULL"
+                ))
+                connection.execute(text("INSERT INTO schema_migrations (version) VALUES (2)"))
             connection.commit()
         except BaseException:
             connection.rollback()

@@ -2,6 +2,7 @@ import base64
 import binascii
 import re
 from datetime import datetime, timezone
+from enum import StrEnum
 from typing import Annotated
 
 from pydantic import (
@@ -13,8 +14,6 @@ from pydantic import (
     computed_field,
     field_validator,
 )
-
-
 MAX_PHOTO_BYTES = 1 * 1024 * 1024
 PHOTO_PATTERN = re.compile(r"^data:(image/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$")
 
@@ -23,8 +22,11 @@ def _validate_photo(value: str) -> str:
     match = PHOTO_PATTERN.fullmatch(value)
     if match is None:
         raise ValueError("photo_url must be a base64 data URL for JPEG, PNG, WebP, or GIF")
+    encoded = match.group(2)
+    if len(encoded) > 4 * ((MAX_PHOTO_BYTES + 2) // 3):
+        raise ValueError("photo_url must decode to 1 MB or less")
     try:
-        decoded = base64.b64decode(match.group(2), validate=True)
+        decoded = base64.b64decode(encoded, validate=True)
     except (ValueError, binascii.Error) as error:
         raise ValueError("photo_url contains invalid base64 data") from error
     if not decoded or len(decoded) > MAX_PHOTO_BYTES:
@@ -42,6 +44,30 @@ def _validate_photo(value: str) -> str:
 
 
 PhotoDataUrl = Annotated[str, BeforeValidator(_validate_photo)]
+
+
+class AddressType(StrEnum):
+    HOME = "Home"
+    WORK = "Work"
+    OTHER = "Other"
+
+
+class AddressBase(BaseModel):
+    type: AddressType
+    address: str | None = Field(default=None, max_length=300)
+    city: str | None = Field(default=None, max_length=120)
+    state: str | None = Field(default=None, max_length=120)
+    postal_code: str | None = Field(default=None, max_length=20)
+    country: str | None = Field(default=None, max_length=120)
+
+
+class AddressCreate(AddressBase):
+    pass
+
+
+class AddressRead(AddressBase):
+    id: int
+    model_config = ConfigDict(from_attributes=True)
 
 
 class ContactBase(BaseModel):
@@ -114,6 +140,7 @@ class ContactBase(BaseModel):
         default=None,
         description="Optional contact photo as a data URL.",
     )
+    addresses: list[AddressCreate] = Field(default_factory=list, max_length=20)
 
 
 _FULL_EXAMPLE = {
@@ -180,6 +207,7 @@ class ContactUpdate(BaseModel):
     country: str | None = Field(default=None, max_length=120, description="New country.")
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
     photo_url: PhotoDataUrl | None = Field(default=None, description="New contact photo as a data URL.")
+    addresses: list[AddressCreate] | None = Field(default=None, max_length=20)
 
 
 class ContactRead(ContactBase):
@@ -201,6 +229,9 @@ class ContactRead(ContactBase):
     )
 
     id: int = Field(description="Server-assigned identifier.", examples=[1])
+    addresses: list[AddressRead] = Field(
+        default_factory=list, description="Home, work, and other postal addresses."
+    )
     created_at: datetime = Field(
         description="UTC timestamp of when the contact was created.",
         examples=["2026-08-19T16:22:58.189507Z"],
