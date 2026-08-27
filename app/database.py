@@ -1,6 +1,7 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.exc import OperationalError
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -46,10 +47,38 @@ def _enable_sqlite_foreign_keys(dbapi_connection, _connection_record) -> None:
 
 
 def init_db() -> None:
-    """Create tables. Called on startup; safe to call repeatedly."""
+    """Create tables and apply serialized, versioned schema migrations."""
     from app import models  # noqa: F401  (register models on Base.metadata)
 
-    Base.metadata.create_all(bind=engine)
+    with engine.connect() as connection:
+        if engine.dialect.name == "sqlite":
+            connection.exec_driver_sql("BEGIN IMMEDIATE")
+        elif engine.dialect.name == "postgresql":
+            connection.execute(text("SELECT pg_advisory_xact_lock(847291)"))
+
+        try:
+            Base.metadata.create_all(bind=connection)
+            connection.execute(
+                text(
+                    "CREATE TABLE IF NOT EXISTS schema_migrations "
+                    "(version INTEGER PRIMARY KEY)"
+                )
+            )
+            version = connection.execute(
+                text("SELECT version FROM schema_migrations ORDER BY version DESC LIMIT 1")
+            ).scalar_one_or_none()
+            if version is None:
+                try:
+                    connection.execute(text("ALTER TABLE contacts ADD COLUMN photo_url TEXT"))
+                except OperationalError as error:
+                    message = str(error).lower()
+                    if "duplicate column" not in message and "already exists" not in message:
+                        raise
+                connection.execute(text("INSERT INTO schema_migrations (version) VALUES (1)"))
+            connection.commit()
+        except BaseException:
+            connection.rollback()
+            raise
 
 
 def get_db() -> Generator[Session, None, None]:
