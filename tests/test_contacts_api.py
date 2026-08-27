@@ -19,6 +19,20 @@ def test_create_contact(client, payload):
     assert body["created_at"] and body["updated_at"]
 
 
+def test_contact_supports_multiple_typed_addresses(client, payload):
+    addresses = [
+        {"type": "Home", "city": "Oakland", "country": "USA"},
+        {"type": "Work", "address": "1 Market St", "city": "San Francisco"},
+    ]
+    response = client.post(BASE, json={**payload, "addresses": addresses})
+    assert response.status_code == 201
+    body = response.json()
+    assert [(item["type"], item["city"]) for item in body["addresses"]] == [
+        ("Home", "Oakland"),
+        ("Work", "San Francisco"),
+    ]
+
+
 def test_create_requires_valid_email(client, payload):
     response = client.post(BASE, json={**payload, "email": "not-an-email"})
     assert response.status_code == 422
@@ -113,6 +127,16 @@ def test_patch_updates_only_sent_fields(client, payload):
     assert body["phone"] == "+1-000-000-0000"
     assert body["first_name"] == "Ada"
     assert body["company"] == "Analytical Engines"
+
+
+def test_patch_null_addresses_clears_existing_addresses_and_updates_timestamp(client, payload):
+    address = {"type": "Home", "city": "Oakland"}
+    created = client.post(BASE, json={**payload, "addresses": [address]}).json()
+    response = client.patch(f"{BASE}/{created['id']}", json={"addresses": None})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["addresses"] == []
+    assert body["updated_at"] != created["updated_at"]
 
 
 def test_patch_duplicate_email_conflicts(client, payload):

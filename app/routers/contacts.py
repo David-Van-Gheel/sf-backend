@@ -103,7 +103,12 @@ def list_contacts(
         db, search=search, limit=limit, offset=offset, sort_by=sort_by, order=order
     )
     return ContactPage(
-        items=[ContactSummary.model_validate(item) for item in items],
+        items=[
+            ContactSummary.model_validate(
+                {field: getattr(item, field) for field in ContactSummary.model_fields if field != "addresses"}
+            )
+            for item in items
+        ],
         total=total,
         limit=limit,
         offset=offset,
