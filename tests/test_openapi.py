@@ -65,6 +65,7 @@ def test_operation_ids_are_stable_and_unique(spec):
         "createContact",
         "listContacts",
         "getContact",
+        "getContactPhoto",
         "replaceContact",
         "updateContact",
         "deleteContact",

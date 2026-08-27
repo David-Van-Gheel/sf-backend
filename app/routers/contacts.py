@@ -7,7 +7,9 @@ from app.models import Contact
 from app.schemas import (
     ContactCreate,
     ContactPage,
+    ContactPhoto,
     ContactRead,
+    ContactSummary,
     ContactReplace,
     ContactUpdate,
     ErrorResponse,
@@ -101,11 +103,22 @@ def list_contacts(
         db, search=search, limit=limit, offset=offset, sort_by=sort_by, order=order
     )
     return ContactPage(
-        items=[ContactRead.model_validate(item) for item in items],
+        items=[ContactSummary.model_validate(item) for item in items],
         total=total,
         limit=limit,
         offset=offset,
     )
+
+
+@router.get(
+    "/{contact_id}/photo",
+    response_model=ContactPhoto,
+    operation_id="getContactPhoto",
+    summary="Get a contact photo",
+)
+def get_contact_photo(contact_id: int = CONTACT_ID, db: Session = Depends(get_db)) -> ContactPhoto:
+    """Fetch only the optional photo for a single contact."""
+    return ContactPhoto(photo_url=_get_or_404(db, contact_id).photo_url)
 
 
 @router.get(

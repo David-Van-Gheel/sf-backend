@@ -29,6 +29,20 @@ def test_create_requires_names(client, payload):
     assert response.status_code == 422
 
 
+def test_photo_must_be_a_valid_small_data_url(client, payload):
+    invalid = client.post(BASE, json={**payload, "photo_url": "not-a-photo"})
+    assert invalid.status_code == 422
+
+    valid = "data:image/png;base64,iVBORw0KGgo="
+    created = client.post(BASE, json={**payload, "photo_url": valid})
+    assert created.status_code == 201
+    contact_id = created.json()["id"]
+
+    listed = client.get(BASE).json()["items"][0]
+    assert "photo_url" not in listed
+    assert client.get(f"{BASE}/{contact_id}").json()["photo_url"] == valid
+
+
 def test_duplicate_email_conflicts(client, payload):
     assert client.post(BASE, json=payload).status_code == 201
     response = client.post(BASE, json={**payload, "email": "ADA@example.com"})
