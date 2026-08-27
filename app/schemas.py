@@ -1,6 +1,47 @@
+import base64
+import binascii
+import re
 from datetime import datetime, timezone
+from typing import Annotated
 
-from pydantic import BaseModel, ConfigDict, EmailStr, Field, computed_field, field_validator
+from pydantic import (
+    BaseModel,
+    BeforeValidator,
+    ConfigDict,
+    EmailStr,
+    Field,
+    computed_field,
+    field_validator,
+)
+
+
+MAX_PHOTO_BYTES = 1 * 1024 * 1024
+PHOTO_PATTERN = re.compile(r"^data:(image/(?:jpeg|png|webp|gif));base64,([A-Za-z0-9+/]+={0,2})$")
+
+
+def _validate_photo(value: str) -> str:
+    match = PHOTO_PATTERN.fullmatch(value)
+    if match is None:
+        raise ValueError("photo_url must be a base64 data URL for JPEG, PNG, WebP, or GIF")
+    try:
+        decoded = base64.b64decode(match.group(2), validate=True)
+    except (ValueError, binascii.Error) as error:
+        raise ValueError("photo_url contains invalid base64 data") from error
+    if not decoded or len(decoded) > MAX_PHOTO_BYTES:
+        raise ValueError(f"photo_url must decode to 1 MB or less")
+    media_type = match.group(1)
+    valid_signature = (
+        (media_type == "image/jpeg" and decoded.startswith(b"\xff\xd8\xff"))
+        or (media_type == "image/png" and decoded.startswith(b"\x89PNG\r\n\x1a\n"))
+        or (media_type == "image/gif" and decoded.startswith((b"GIF87a", b"GIF89a")))
+        or (media_type == "image/webp" and decoded.startswith(b"RIFF") and decoded[8:12] == b"WEBP")
+    )
+    if not valid_signature:
+        raise ValueError("photo_url does not contain a valid image of the declared type")
+    return value
+
+
+PhotoDataUrl = Annotated[str, BeforeValidator(_validate_photo)]
 
 
 class ContactBase(BaseModel):
@@ -69,9 +110,8 @@ class ContactBase(BaseModel):
         description="Free-form notes about the contact. No length limit.",
         examples=["Met at the SF hackathon."],
     )
-    photo_url: str | None = Field(
+    photo_url: PhotoDataUrl | None = Field(
         default=None,
-        max_length=7_000_000,
         description="Optional contact photo as a data URL.",
     )
 
@@ -139,7 +179,7 @@ class ContactUpdate(BaseModel):
     postal_code: str | None = Field(default=None, max_length=20, description="New postal code.")
     country: str | None = Field(default=None, max_length=120, description="New country.")
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
-    photo_url: str | None = Field(default=None, max_length=7_000_000, description="New contact photo as a data URL.")
+    photo_url: PhotoDataUrl | None = Field(default=None, description="New contact photo as a data URL.")
 
 
 class ContactRead(ContactBase):
@@ -183,10 +223,22 @@ class ContactRead(ContactBase):
         return f"{self.first_name} {self.last_name}".strip()
 
 
+class ContactSummary(ContactRead):
+    """A list item without the potentially large photo payload."""
+
+    photo_url: str | None = Field(default=None, exclude=True)
+
+
+class ContactPhoto(BaseModel):
+    """The optional photo payload for a single contact."""
+
+    photo_url: PhotoDataUrl | None
+
+
 class ContactPage(BaseModel):
     """One page of contacts plus the totals a client needs to paginate."""
 
-    items: list[ContactRead] = Field(description="Contacts on this page, ordered by the requested sort.")
+    items: list[ContactSummary] = Field(description="Contacts on this page, ordered by the requested sort.")
     total: int = Field(
         description="Total contacts matching the query, ignoring `limit` and `offset`.",
         examples=[42],
