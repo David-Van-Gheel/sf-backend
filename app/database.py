@@ -1,6 +1,6 @@
 from collections.abc import Generator
 
-from sqlalchemy import create_engine, event
+from sqlalchemy import create_engine, event, inspect, text
 from sqlalchemy.engine import Engine
 from sqlalchemy.orm import DeclarativeBase, Session, sessionmaker
 from sqlalchemy.pool import StaticPool
@@ -50,6 +50,9 @@ def init_db() -> None:
     from app import models  # noqa: F401  (register models on Base.metadata)
 
     Base.metadata.create_all(bind=engine)
+    if "photo_url" not in {column["name"] for column in inspect(engine).get_columns("contacts")}:
+        with engine.begin() as connection:
+            connection.execute(text("ALTER TABLE contacts ADD COLUMN photo_url TEXT"))
 
 
 def get_db() -> Generator[Session, None, None]:

@@ -69,6 +69,11 @@ class ContactBase(BaseModel):
         description="Free-form notes about the contact. No length limit.",
         examples=["Met at the SF hackathon."],
     )
+    photo_url: str | None = Field(
+        default=None,
+        max_length=7_000_000,
+        description="Optional contact photo as a data URL.",
+    )
 
 
 _FULL_EXAMPLE = {
@@ -134,6 +139,7 @@ class ContactUpdate(BaseModel):
     postal_code: str | None = Field(default=None, max_length=20, description="New postal code.")
     country: str | None = Field(default=None, max_length=120, description="New country.")
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
+    photo_url: str | None = Field(default=None, max_length=7_000_000, description="New contact photo as a data URL.")
 
 
 class ContactRead(ContactBase):
