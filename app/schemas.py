@@ -207,7 +207,9 @@ class ContactUpdate(BaseModel):
     country: str | None = Field(default=None, max_length=120, description="New country.")
     notes: str | None = Field(default=None, description="New notes; replaces the existing text.")
     photo_url: PhotoDataUrl | None = Field(default=None, description="New contact photo as a data URL.")
-    addresses: list[AddressCreate] | None = Field(default=None, max_length=20)
+    addresses: list[AddressCreate] | None = Field(
+        default=None, max_length=20, description="Replace all addresses; null clears them."
+    )
 
 
 class ContactRead(ContactBase):

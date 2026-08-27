@@ -129,6 +129,16 @@ def test_patch_updates_only_sent_fields(client, payload):
     assert body["company"] == "Analytical Engines"
 
 
+def test_patch_null_addresses_clears_existing_addresses_and_updates_timestamp(client, payload):
+    address = {"type": "Home", "city": "Oakland"}
+    created = client.post(BASE, json={**payload, "addresses": [address]}).json()
+    response = client.patch(f"{BASE}/{created['id']}", json={"addresses": None})
+    assert response.status_code == 200
+    body = response.json()
+    assert body["addresses"] == []
+    assert body["updated_at"] != created["updated_at"]
+
+
 def test_patch_duplicate_email_conflicts(client, payload):
     first = client.post(BASE, json=payload).json()["id"]
     client.post(BASE, json={**payload, "email": "grace@example.com"})
