@@ -140,7 +140,6 @@ class ContactBase(BaseModel):
         default=None,
         description="Optional contact photo as a data URL.",
     )
-    addresses: list[AddressCreate] = Field(default_factory=list, max_length=20)
 
 
 _FULL_EXAMPLE = {
@@ -164,6 +163,7 @@ class ContactCreate(ContactBase):
     """Body of `POST /api/v1/contacts`. Only the two names and email are required."""
 
     model_config = ConfigDict(json_schema_extra={"examples": [_FULL_EXAMPLE, _MINIMAL_EXAMPLE]})
+    addresses: list[AddressCreate] = Field(default_factory=list, max_length=20)
 
 
 class ContactReplace(ContactBase):
@@ -175,6 +175,7 @@ class ContactReplace(ContactBase):
     """
 
     model_config = ConfigDict(json_schema_extra={"examples": [_FULL_EXAMPLE]})
+    addresses: list[AddressCreate] = Field(default_factory=list, max_length=20)
 
 
 class ContactUpdate(BaseModel):
@@ -256,10 +257,25 @@ class ContactRead(ContactBase):
         return f"{self.first_name} {self.last_name}".strip()
 
 
-class ContactSummary(ContactRead):
-    """A list item without the potentially large photo payload."""
+class ContactSummary(ContactBase):
+    """A list item without addresses or the potentially large photo payload."""
 
+    model_config = ConfigDict(from_attributes=True)
+
+    id: int = Field(description="Server-assigned identifier.", examples=[1])
     photo_url: str | None = Field(default=None, exclude=True)
+    created_at: datetime
+    updated_at: datetime
+
+    @field_validator("created_at", "updated_at")
+    @classmethod
+    def _as_utc(cls, value: datetime) -> datetime:
+        return value.replace(tzinfo=timezone.utc) if value.tzinfo is None else value
+
+    @computed_field(description="Convenience concatenation of first and last name.", examples=["Ada Lovelace"])
+    @property
+    def full_name(self) -> str:
+        return f"{self.first_name} {self.last_name}".strip()
 
 
 class ContactPhoto(BaseModel):
